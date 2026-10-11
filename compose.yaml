@@ -1,0 +1,80 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: campus_safety
+      MYSQL_USER: campus
+      MYSQL_PASSWORD: campus
+      MYSQL_ROOT_PASSWORD: localroot
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-plocalroot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongodb:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      MYSQL_URL: jdbc:mysql://mysql:3306/campus_safety
+      MYSQL_USER: campus
+      MYSQL_PASSWORD: campus
+      MONGODB_URI: mongodb://mongodb:27017/campus_safety
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CAMPUS_ADMIN_USERNAME: ${CAMPUS_ADMIN_USERNAME:-admin}
+      CAMPUS_ADMIN_PASSWORD: ${CAMPUS_ADMIN_PASSWORD:-}
+      CAMPUS_FRONTEND_ORIGIN: http://localhost:5173
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  mongo-data:
